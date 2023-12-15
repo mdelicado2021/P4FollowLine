@@ -6,6 +6,7 @@
 // LED
 #include "FastLED.h"
 #include <Servo.h>
+//#include <Arduino_FreeRTOS.h>
 
 
 //------------------- Definición de variables -------------------
@@ -20,7 +21,7 @@
 #define PIN_ITR20001_RIGHT  A0
 
 // Motores
-// Enable/Disable motor control.
+// Enable/Disable motor control
 //  HIGH: motor control enabled
 //  LOW: motor control disabled
 #define PIN_Motor_STBY 3
@@ -105,13 +106,13 @@ void seguidor(){
   int rightSensorValue = analogRead(PIN_ITR20001_RIGHT);
 
   if (leftSensorValue < umbral && middleSensorValue > umbral && rightSensorValue < umbral) {
-  recto();
+    recto();
   }
   else if (leftSensorValue < umbral && middleSensorValue < umbral && rightSensorValue > umbral) {
-  dcha();
+    dcha();
   }
   else if (leftSensorValue > umbral && middleSensorValue < umbral && rightSensorValue < umbral) {
-  izq();
+    izq();
   }
 }
 
@@ -134,6 +135,6 @@ void loop() {
   
   // ultrasonido();
 
-  // seguidor();
+  seguidor();
 
 }
