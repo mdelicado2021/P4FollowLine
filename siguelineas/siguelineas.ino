@@ -38,14 +38,17 @@
 // PIN_Motor_PWMB: Analog output [0-255]. It provides speed.
 #define PIN_Motor_PWMB 6
 
-#define VEL 30
+#define VEL 100
 
 const int SPEED = 9600;
 
 int distance;
 int pulse_time;
 
-const int umbral = 850;
+const int umbral = 650;
+int leftSensorValue;
+int middleSensorValue;
+int rightSensorValue;
 
 
 //------------------- Setup -------------------
@@ -85,33 +88,33 @@ void recto(){
 
 void dcha(){
   digitalWrite(PIN_Motor_AIN_1, LOW);
-  analogWrite(PIN_Motor_PWMA, VEL);
+  analogWrite(PIN_Motor_PWMA, VEL/1.5);
   
   digitalWrite(PIN_Motor_BIN_1, HIGH);
-  analogWrite(PIN_Motor_PWMB, VEL);
+  analogWrite(PIN_Motor_PWMB, VEL/1.5);
 }
 
 void izq(){
   digitalWrite(PIN_Motor_AIN_1, HIGH);
-  analogWrite(PIN_Motor_PWMA, VEL);
+  analogWrite(PIN_Motor_PWMA, VEL/1.5);
   
   digitalWrite(PIN_Motor_BIN_1, LOW);
-  analogWrite(PIN_Motor_PWMB, VEL);
+  analogWrite(PIN_Motor_PWMB, VEL/1.5);
 }
 
 void seguidor(){
   // Lectura de valores de los sensores infrarrojos
-  int leftSensorValue = analogRead(PIN_ITR20001_LEFT);
-  int middleSensorValue = analogRead(PIN_ITR20001_MIDDLE);
-  int rightSensorValue = analogRead(PIN_ITR20001_RIGHT);
+  leftSensorValue = analogRead(PIN_ITR20001_LEFT);
+  middleSensorValue = analogRead(PIN_ITR20001_MIDDLE);
+  rightSensorValue = analogRead(PIN_ITR20001_RIGHT);
 
-  if (leftSensorValue < umbral && middleSensorValue > umbral && rightSensorValue < umbral) {
+  if (middleSensorValue > umbral) {
     recto();
   }
-  else if (leftSensorValue < umbral && middleSensorValue < umbral && rightSensorValue > umbral) {
+  else if (rightSensorValue > umbral) {
     dcha();
   }
-  else if (leftSensorValue > umbral && middleSensorValue < umbral && rightSensorValue < umbral) {
+  else if (leftSensorValue > umbral) {
     izq();
   }
 }
