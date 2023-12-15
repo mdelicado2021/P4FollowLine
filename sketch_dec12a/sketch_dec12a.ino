@@ -3,20 +3,25 @@
   De momento código para siguelíneas.
 */
 
+// LED
+#include "FastLED.h"
+#include <Servo.h>
+//#include <Arduino_FreeRTOS.h>
+
+
+//------------------- Definición de variables -------------------
 
 // Ultrasonido
 #define TRIG_PIN 13  
 #define ECHO_PIN 12 
-
 
 // Sensor infrarrojo
 #define PIN_ITR20001_LEFT   A2
 #define PIN_ITR20001_MIDDLE A1
 #define PIN_ITR20001_RIGHT  A0
 
-
 // Motores
-// Enable/Disable motor control.
+// Enable/Disable motor control
 //  HIGH: motor control enabled
 //  LOW: motor control disabled
 #define PIN_Motor_STBY 3
@@ -33,19 +38,17 @@
 // PIN_Motor_PWMB: Analog output [0-255]. It provides speed.
 #define PIN_Motor_PWMB 6
 
-
-// LED
-#include "FastLED.h"
+#define VEL 30
 
 const int SPEED = 9600;
 
 int distance;
 int pulse_time;
 
-const int umbral = 500;
+const int umbral = 850;
 
 
-
+//------------------- Setup -------------------
 
 void setup() {
   Serial.begin(9600);
@@ -61,6 +64,8 @@ void setup() {
   pinMode(PIN_Motor_BIN_1, OUTPUT);
   pinMode(PIN_Motor_PWMB, OUTPUT);
 
+  digitalWrite(PIN_Motor_STBY, HIGH);
+
   // Configuración pines de infrarrojo
   pinMode(PIN_ITR20001_LEFT, INPUT);
   pinMode(PIN_ITR20001_MIDDLE, INPUT);
@@ -69,63 +74,67 @@ void setup() {
 
 }
 
-
-void ultrasonido(){
-  long t;
-  long d;
-
-  digitalWrite(TRIG_PIN, HIGH);
-  delayMicroseconds(10); // enviar un pulso de 10us
-  digitalWrite(TRIG_PIN, LOW);
-
-  t = pulseIn(ECHO_PIN, HIGH);
-  d = t/59;
-
-  Serial.println(d);
-  delay(100);
+//------------------- Funciones -------------------
+void recto(){
+  digitalWrite(PIN_Motor_AIN_1, HIGH);
+  analogWrite(PIN_Motor_PWMA, VEL);
   
+  digitalWrite(PIN_Motor_BIN_1, HIGH);
+  analogWrite(PIN_Motor_PWMB, VEL);
 }
 
+void dcha(){
+  digitalWrite(PIN_Motor_AIN_1, LOW);
+  analogWrite(PIN_Motor_PWMA, VEL);
+  
+  digitalWrite(PIN_Motor_BIN_1, HIGH);
+  analogWrite(PIN_Motor_PWMB, VEL);
+}
 
+void izq(){
+  digitalWrite(PIN_Motor_AIN_1, HIGH);
+  analogWrite(PIN_Motor_PWMA, VEL);
+  
+  digitalWrite(PIN_Motor_BIN_1, LOW);
+  analogWrite(PIN_Motor_PWMB, VEL);
+}
 
-void loop() {
+void seguidor(){
   // Lectura de valores de los sensores infrarrojos
   int leftSensorValue = analogRead(PIN_ITR20001_LEFT);
   int middleSensorValue = analogRead(PIN_ITR20001_MIDDLE);
   int rightSensorValue = analogRead(PIN_ITR20001_RIGHT);
 
+  if (leftSensorValue < umbral && middleSensorValue > umbral && rightSensorValue < umbral) {
+    recto();
+  }
+  else if (leftSensorValue < umbral && middleSensorValue < umbral && rightSensorValue > umbral) {
+    dcha();
+  }
+  else if (leftSensorValue > umbral && middleSensorValue < umbral && rightSensorValue < umbral) {
+    izq();
+  }
+}
+
+
+void ultrasonido(){
+  long t;
+  long d;
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10); // enviar un pulso de 10us
+  digitalWrite(TRIG_PIN, LOW);
+  t = pulseIn(ECHO_PIN, HIGH);
+  d = t/59;
+  Serial.println(d);
+  delay(100);
+}
+
+
+
+void loop() {
+  
   // ultrasonido();
 
-
-  // Lógica del seguidor de línea
-  if (leftSensorValue < umbral && middleSensorValue > umbral && rightSensorValue < umbral) {
-    // Va recto
-    Serial.println("Recto");
-    // Controlar motores para avanzar recto
-    digitalWrite(PIN_Motor_AIN_1, HIGH);
-    analogWrite(PIN_Motor_PWMA, 255);
-    
-    digitalWrite(PIN_Motor_BIN_1, HIGH);
-    analogWrite(PIN_Motor_PWMB, 255);
-  } else if (leftSensorValue < umbral && middleSensorValue < umbral && rightSensorValue > umbral) {
-    // Gira a la derecha
-    Serial.println("Gira a la derecha");
-    // Controlar motores para girar a la derecha
-    digitalWrite(PIN_Motor_AIN_1, LOW);
-    analogWrite(PIN_Motor_PWMA, 150);
-    
-    digitalWrite(PIN_Motor_BIN_1, HIGH);
-    analogWrite(PIN_Motor_PWMB, 150);
-  } else if (leftSensorValue > umbral && middleSensorValue < umbral && rightSensorValue < umbral) {
-    // Gira a la izquierda
-    Serial.println("Gira a la izquierda");
-    // Controlar motores para girar a la izquierda
-    digitalWrite(PIN_Motor_AIN_1, HIGH);
-    analogWrite(PIN_Motor_PWMA, 150);
-    
-    digitalWrite(PIN_Motor_BIN_1, LOW);
-    analogWrite(PIN_Motor_PWMB, 150);
-  }
-  delay(700);
+  seguidor();
 
 }
