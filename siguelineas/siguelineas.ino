@@ -6,6 +6,7 @@
 #include <Arduino_FreeRTOS.h>
 #include "FastLED.h"
 #include <Servo.h>
+#include <SoftwareSerial.h>
 
 
 //------------------- Definición de variables -------------------
@@ -44,9 +45,11 @@ CRGB leds[NUM_LEDS];
 
 #define VEL 100
 
+#define COM_ESP2ARD 0
+
 // Variables del PD
-float Kp = 1.0; // Constante proporcional
-float Kd = 0.75; // Constante derivativa
+float Kp = 1.05; // Constante proporcional
+float Kd = 0.85; // Constante derivativa
 
 float error = 0; // Error actual
 float error_anterior = 0; // Error anterior
@@ -137,12 +140,14 @@ void seguidor(){
     else if (leftSensorValue > umbral) {
       izq(velocidadIzquierda, velocidadDerecha);
     }
-  } else {
+  } 
+  else {
     digitalWrite(PIN_Motor_AIN_1, LOW);
     analogWrite(PIN_Motor_PWMA, 0);
     
     digitalWrite(PIN_Motor_BIN_1, LOW);
     analogWrite(PIN_Motor_PWMB, 0);
+    Serial.write(2);
   }
 }
 
@@ -232,6 +237,13 @@ void setup() {
   pinMode(PIN_ITR20001_LEFT, INPUT);
   pinMode(PIN_ITR20001_MIDDLE, INPUT);
   pinMode(PIN_ITR20001_RIGHT, INPUT);
+
+  while(1){
+    if (Serial.available()){
+      Serial.println(Serial.read());
+      break;
+    }
+  }
 
   // Create tasks for line following and ultrasonic sensing
   xTaskCreate(TaskLineFollower, "LineFollower", 128, NULL, 1, NULL);
