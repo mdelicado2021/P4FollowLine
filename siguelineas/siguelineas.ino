@@ -104,7 +104,7 @@ bool viene_de_ponerse_en_rojo = true;
 
 int counter = 0; 
 
-const int umbral_distancia = 10; //cm
+const int umbral_distancia = 8; //cm
 
 int totalLecturasInfrarrojos = 0;
 int lecturasLineaDetectada = 0;
@@ -223,6 +223,7 @@ void seguidor(){
     if (obs_detected && !mensajeEnviado) {
       // outputbuff
       //Serial.write("\n");
+      //Serial.println(distance);
       Serial.print("2");
       Serial.print("1");
       
@@ -252,12 +253,13 @@ void ultrasonido(){
 
 void porcentaje_linea(){
   float porcentajeLinea = (float)lecturasLineaDetectada / totalLecturasInfrarrojos * 100.0;
-  Serial.print("Porcentaje de línea detectada: ");
-  Serial.print(porcentajeLinea);
-  Serial.println("%");
+  //Serial.print("Porcentaje de línea detectada: ");
+  //Serial.print(porcentajeLinea);
+  //Serial.println("%");
+  Serial.print(8);
   mensaje8_enviado = true;  
-
 }
+
 
 
 
@@ -275,6 +277,8 @@ void TaskLineFollower(void *pvParameters) {
     seguidor();
   }
 }
+
+
 
 // Task for line following
 void TaskLedBlink(void *pvParameters) {
