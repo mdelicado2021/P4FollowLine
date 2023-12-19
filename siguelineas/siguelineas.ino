@@ -174,13 +174,11 @@ void seguidor(){
       ultimo_sensor_infrarrojo = 2;
     }
     else if (middleSensorValue < umbral && rightSensorValue < umbral && leftSensorValue < umbral){
-      while (middleSensorValue < umbral && rightSensorValue < umbral && leftSensorValue < umbral){
-        if (ultimo_sensor_infrarrojo == 2){
-          izq(velocidadIzquierda, velocidadDerecha);
-        }
-        else if (ultimo_sensor_infrarrojo == 3){
-          dcha(velocidadIzquierda, velocidadDerecha);
-        }
+      if (ultimo_sensor_infrarrojo == 2){
+        izq(velocidadIzquierda, velocidadDerecha);
+      }
+      else if (ultimo_sensor_infrarrojo == 3){
+        dcha(velocidadIzquierda, velocidadDerecha);
       }
     }
     //mensajeEnviado = false;
@@ -205,8 +203,8 @@ void seguidor(){
       mensajeEnviado = true; // Asegurar que el mensaje solo se envíe una vez
     }
   }
-  }
 }
+
 
 
 void ultrasonido(){
@@ -248,15 +246,13 @@ void TaskLedBlink(void *pvParameters) {
         FastLED.showColor(CRGB::Green);
 
         if (viene_de_ponerse_en_rojo){
-          if (isSearching) {
-            // Mensaje de LINE_FOUND
-            Serial.println(7);
-            // Mensaje de STOP_LINE_SEARCH
-            Serial.println(6);
-            isSearching = false;
-          }
+          // Mensaje de LINE_FOUND
+          Serial.println(7);
+          // Mensaje de STOP_LINE_SEARCH
+          Serial.println(6);
+          viene_de_ponerse_en_rojo = true;
+          viene_de_ponerse_en_verde = false;
         }
-        viene_de_ponerse_en_rojo = false;
 
       } else {
         // Fuera de la línea (rojo)
@@ -267,8 +263,9 @@ void TaskLedBlink(void *pvParameters) {
           Serial.println(3);
           // Mensaje de INIT_LINE_SEARCH
           Serial.println(5);
+          viene_de_ponerse_en_rojo = true;
+          viene_de_ponerse_en_verde = false;
         }
-        viene_de_ponerse_en_rojo = true;
         
       }
 
