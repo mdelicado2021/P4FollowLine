@@ -7,6 +7,7 @@
 #include "FastLED.h"
 #include <Servo.h>
 #include <SoftwareSerial.h>
+#include <string.h>
 
 
 //------------------- Definición de variables -------------------
@@ -47,9 +48,19 @@ CRGB leds[NUM_LEDS];
 
 #define COM_ESP2ARD 0
 
+#define START_LAP 0
+#define END_LAP 1
+#define OBSTACLE_DETECTED 2
+#define LINE_LOST 3
+#define PING 4
+#define INIT_LINE_SEARCH 5
+#define STOP_LINE_SEARCH 6
+#define LINE_FOUND 7
+#define VISIBLE_LINE 8
+
 // Variables del PD
-float Kp = 1.05; // Constante proporcional
-float Kd = 0.85; // Constante derivativa
+float Kp = 0.60; // Constante proporcional
+float Kd = 0.40; // Constante derivativa
 
 float error = 0; // Error actual
 float error_anterior = 0; // Error anterior
@@ -60,11 +71,13 @@ float salidaPD = 0; // Salida del control PD
 
 const int SPEED = 9600;
 
-int distance;
+int distance = 100; // Inicializa con un valor mayor que 8 para evitar falsos positivos
+bool mensajeEnviado = false;
+bool obs_detected = false;
 int pulse_time;
 
-//const int umbral = 650;
-const int umbral = 50;
+const int umbral = 650;
+//const int umbral = 50;
 
 int leftSensorValue;
 int middleSensorValue;
@@ -140,6 +153,7 @@ void seguidor(){
     else if (leftSensorValue > umbral) {
       izq(velocidadIzquierda, velocidadDerecha);
     }
+    mensajeEnviado = false;
   } 
   else {
     digitalWrite(PIN_Motor_AIN_1, LOW);
@@ -147,7 +161,16 @@ void seguidor(){
     
     digitalWrite(PIN_Motor_BIN_1, LOW);
     analogWrite(PIN_Motor_PWMB, 0);
-    Serial.write(2);
+    obs_detected = true;
+    // Serial.println("END_LAP");
+
+    // Enviar el mensaje "END_LAP" solo una vez
+    if (obs_detected && !mensajeEnviado) {
+      Serial.println("1");
+      Serial.println("2");
+      // Serial.println((String)distance);
+      mensajeEnviado = true; // Asegurar que el mensaje solo se envíe una vez
+    }
   }
 }
 
@@ -163,10 +186,10 @@ void ultrasonido(){
   t = pulseIn(ECHO_PIN, HIGH); //obtenemos el ancho del pulso
   distance = t/59;             //escalamos el tiempo a una distancia en cm
   
-  Serial.print("Distancia: ");
-  Serial.print(distance);      //Enviamos serialmente el valor de la distancia
-  Serial.print("cm");
-  Serial.println();
+  // Serial.print("Distancia: ");
+  // Serial.print(distance);      //Enviamos serialmente el valor de la distancia
+  // Serial.print("cm");
+  // Serial.println();
 }
 
 // Task for line following
@@ -238,12 +261,14 @@ void setup() {
   pinMode(PIN_ITR20001_MIDDLE, INPUT);
   pinMode(PIN_ITR20001_RIGHT, INPUT);
 
+  /*
   while(1){
     if (Serial.available()){
-      Serial.println(Serial.read());
+      // Serial.println(Serial.read());
       break;
     }
   }
+  */
 
   // Create tasks for line following and ultrasonic sensing
   xTaskCreate(TaskLineFollower, "LineFollower", 128, NULL, 1, NULL);
