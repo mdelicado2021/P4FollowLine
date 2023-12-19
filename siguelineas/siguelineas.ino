@@ -10,7 +10,12 @@
 #include <string.h>
 
 
+
+
 //------------------- Definición de variables -------------------
+
+
+
 
 // Ultrasonido
 #define TRIG_PIN 13  
@@ -100,7 +105,15 @@ bool viene_de_ponerse_en_rojo = true;
 int counter = 0; 
 
 const int umbral_distancia = 10; //cm
+
+
+
+
 //------------------- Funciones -------------------
+
+
+
+
 void recto(int velizq, int veldcha){
   digitalWrite(PIN_Motor_AIN_1, veldcha);
   analogWrite(PIN_Motor_PWMA, VEL);
@@ -165,7 +178,6 @@ void seguidor(){
   if (distance >= umbral_distancia){
     if (middleSensorValue > umbral) {
       recto(velocidadIzquierda, velocidadDerecha);
-      ultimo_sensor_infrarrojo = 1;
     }
     else if (rightSensorValue > umbral) {
       dcha(velocidadIzquierda, velocidadDerecha);
@@ -207,8 +219,6 @@ void seguidor(){
   }
 }
 
-
-
 void ultrasonido(){
   long t; //timepo que demora en llegar el eco
   long d; //distancia en centimetros
@@ -225,6 +235,17 @@ void ultrasonido(){
   // Serial.print("cm");
   // Serial.println();
 }
+
+
+
+
+
+
+//------------------- Tareas -------------------
+
+
+
+
 
 // Task for line following
 void TaskLineFollower(void *pvParameters) {
@@ -251,10 +272,22 @@ void TaskLedBlink(void *pvParameters) {
       ledColor = CRGB::Blue; // Cambiar a azul si hay un obstáculo
     } else if ((middleSensorValue >= umbral) || (leftSensorValue >= umbral) || (rightSensorValue >= umbral)) {
       ledColor = CRGB::Green; // Cambiar a verde si está sobre la línea
+        if (viene_de_ponerse_en_rojo) {
+          // Mensaje de LINE_FOUND
+          Serial.println(7);
+          // Mensaje de STOP_LINE_SEARCH
+          Serial.println(6);
+        }
       viene_de_ponerse_en_verde = true;
       viene_de_ponerse_en_rojo = false;
     } else {
       ledColor = CRGB::Red; // Cambiar a rojo si está fuera de la línea
+       if (viene_de_ponerse_en_verde) {
+        // Mensaje de LINE_LOST
+        Serial.println(3);
+        // Mensaje de INIT_LINE_SEARCH
+        Serial.println(5);
+      }
       viene_de_ponerse_en_rojo = true;
       viene_de_ponerse_en_verde = false;
     }
