@@ -94,6 +94,8 @@ String outputbuff = "";
 
 int ultimo_sensor_infrarrojo = 0;
 
+bool viene_de_ponerse_en_verde = false;
+bool viene_de_ponerse_en_rojo = false;
 
 int counter = 0; 
 //------------------- Funciones -------------------
@@ -172,10 +174,6 @@ void seguidor(){
       ultimo_sensor_infrarrojo = 2;
     }
     else if (middleSensorValue < umbral && rightSensorValue < umbral && leftSensorValue < umbral){
-      // Mensaje de LINE_LOST
-      Serial.println(3);
-      // Mensaje de INIT_LINE_SEARCH
-      Serial.println(5);
       while (middleSensorValue < umbral && rightSensorValue < umbral && leftSensorValue < umbral){
         if (ultimo_sensor_infrarrojo == 2){
           izq(velocidadIzquierda, velocidadDerecha);
@@ -183,15 +181,10 @@ void seguidor(){
         else if (ultimo_sensor_infrarrojo == 3){
           dcha(velocidadIzquierda, velocidadDerecha);
         }
-
-      // Mensaje de LINE_FOUND
-      Serial.println(7);
-      // Mensaje de STOP_LINE_SEARCH
-      Serial.println(6);
-
+      }
     }
     //mensajeEnviado = false;
-  } 
+  }
   else {
     digitalWrite(PIN_Motor_AIN_1, LOW);
     analogWrite(PIN_Motor_PWMA, 0);
@@ -253,9 +246,30 @@ void TaskLedBlink(void *pvParameters) {
       if ((middleSensorValue >= umbral) || (leftSensorValue  >= umbral) || (rightSensorValue  >= umbral)) {
         // Dentro de la línea (verde)
         FastLED.showColor(CRGB::Green);
+
+        if (viene_de_ponerse_en_rojo){
+          if (isSearching) {
+            // Mensaje de LINE_FOUND
+            Serial.println(7);
+            // Mensaje de STOP_LINE_SEARCH
+            Serial.println(6);
+            isSearching = false;
+          }
+        }
+        viene_de_ponerse_en_rojo = false;
+
       } else {
         // Fuera de la línea (rojo)
         FastLED.showColor(CRGB::Red);
+
+        if (viene_de_ponerse_en_verde) {
+          // Mensaje de LINE_LOST
+          Serial.println(3);
+          // Mensaje de INIT_LINE_SEARCH
+          Serial.println(5);
+        }
+        viene_de_ponerse_en_rojo = true;
+        
       }
 
       FastLED.show();
