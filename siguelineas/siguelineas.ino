@@ -95,7 +95,7 @@ String outputbuff = "";
 int ultimo_sensor_infrarrojo = 0;
 
 bool viene_de_ponerse_en_verde = false;
-bool viene_de_ponerse_en_rojo = false;
+bool viene_de_ponerse_en_rojo = true;
 
 int counter = 0; 
 //------------------- Funciones -------------------
@@ -238,40 +238,39 @@ void TaskLedBlink(void *pvParameters) {
   (void) pvParameters;
 
   for (;;) {
-      // Leer el valor del sensor infrarrojo
-      int middleSensorValue = analogRead(PIN_ITR20001_MIDDLE);
+    // Leer el valor del sensor infrarrojo
+    int middleSensorValue = analogRead(PIN_ITR20001_MIDDLE);
+    int leftSensorValue = analogRead(PIN_ITR20001_LEFT);
+    int rightSensorValue = analogRead(PIN_ITR20001_RIGHT);
 
-      if ((middleSensorValue >= umbral) || (leftSensorValue  >= umbral) || (rightSensorValue  >= umbral)) {
-        // Dentro de la línea (verde)
-        FastLED.showColor(CRGB::Green);
-
-        if (viene_de_ponerse_en_rojo){
-          // Mensaje de LINE_FOUND
-          Serial.println(7);
-          // Mensaje de STOP_LINE_SEARCH
-          Serial.println(6);
-          viene_de_ponerse_en_rojo = true;
-          viene_de_ponerse_en_verde = false;
-        }
-
-      } else {
-        // Fuera de la línea (rojo)
-        FastLED.showColor(CRGB::Red);
-
-        if (viene_de_ponerse_en_verde) {
-          // Mensaje de LINE_LOST
-          Serial.println(3);
-          // Mensaje de INIT_LINE_SEARCH
-          Serial.println(5);
-          viene_de_ponerse_en_rojo = true;
-          viene_de_ponerse_en_verde = false;
-        }
-        
+    // Determinar el color del LED basado en los sensores
+    CRGB ledColor;
+    if ((middleSensorValue >= umbral) || (leftSensorValue >= umbral) || (rightSensorValue >= umbral)) {
+      ledColor = CRGB::Green;
+      if (!viene_de_ponerse_en_verde) {
+        Serial.println(7); // LINE_FOUND
+        Serial.println(6); // STOP_LINE_SEARCH
+        viene_de_ponerse_en_verde = true;
+        viene_de_ponerse_en_rojo = false;
       }
+    } else {
+      ledColor = CRGB::Red;
+      if (!viene_de_ponerse_en_rojo) {
+        Serial.println(3); // LINE_LOST
+        Serial.println(5); // INIT_LINE_SEARCH
+        viene_de_ponerse_en_rojo = true;
+        viene_de_ponerse_en_verde = false;
+      }
+    }
 
-      FastLED.show();
+    // Cambiar el color del LED
+    FastLED.showColor(ledColor);
+
+    // Retraso mínimo para permitir el procesamiento de los sensores y la actualización del LED
+    vTaskDelay(10 / portTICK_PERIOD_MS);
   }
 }
+
 
 // Task for ultrasonic sensor reading
 void TaskUltrasonicSensor(void *pvParameters) {
