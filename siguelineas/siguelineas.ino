@@ -44,7 +44,7 @@
 #define NUM_LEDS 1
 CRGB leds[NUM_LEDS];
 
-#define VEL 100
+#define VEL 150
 
 #define COM_ESP2ARD 0
 
@@ -59,12 +59,19 @@ CRGB leds[NUM_LEDS];
 #define VISIBLE_LINE 8
 
 // Variables del PD
-float Kp = 0.60; // Constante proporcional
-float Kd = 0.40; // Constante derivativa
+float Kp = 0.55; // Constante proporcional
+float Kd = 0.83; // Constante derivativa
 
-float error = 0; // Error actual
-float error_anterior = 0; // Error anterior
-float delta_error = 0; // Cambio en el error
+const int MAX_VEL = 125;
+const int MIN_VEL = 125;
+
+float error_izq = 0; // Error actual
+float error_dch = 0; // Error actual
+float error_anterior = 0;
+float error_anterior_dch = 0; // Error anterior
+float error_anterior_izq = 0; // Error anterior
+float delta_error_izq = 0; // Cambio en el error
+float delta_error_dch = 0; // Cambio en el error
 
 float salidaPD = 0; // Salida del control PD
 
@@ -76,15 +83,19 @@ bool mensajeEnviado = false;
 bool obs_detected = false;
 int pulse_time;
 
-const int umbral = 650;
+const int umbral = 500;
 //const int umbral = 50;
 
 int leftSensorValue;
 int middleSensorValue;
 int rightSensorValue;
 
+String outputbuff = "";
+
+int ultimo_sensor_infrarrojo = 0;
 
 
+int counter = 0; 
 //------------------- Funciones -------------------
 void recto(int velizq, int veldcha){
   digitalWrite(PIN_Motor_AIN_1, veldcha);
@@ -112,12 +123,11 @@ void izq(int velizq, int veldcha){
 
 
 void calcularPD(int valorSensorIzquierdo, int valorSensorCentral, int valorSensorDerecho, int umbral, int &velocidadDerecha, int &velocidadIzquierda) {
-  // Calcula el error basado en los sensores y el umbral
-  // Nota: Este es un ejemplo simple, puedes ajustar la lógica según tus necesidades
-  int error = valorSensorCentral - umbral;
+  // Calcula el error ponderado
+  float error = (valorSensorDerecho - valorSensorIzquierdo); // Error basado en la diferencia de los sensores
 
   // Cálculo del PD
-  int delta_error = error - error_anterior;
+  float delta_error = error - error_anterior;
   float salidaPD = Kp * error + Kd * delta_error;
 
   // Actualiza el error anterior
@@ -128,9 +138,10 @@ void calcularPD(int valorSensorIzquierdo, int valorSensorCentral, int valorSenso
   velocidadIzquierda = VEL - salidaPD;
 
   // Limita las velocidades para que estén dentro de los rangos permitidos
-  velocidadDerecha = constrain(velocidadDerecha, 0, 255);
-  velocidadIzquierda = constrain(velocidadIzquierda, 0, 255);
+  velocidadDerecha = constrain(velocidadDerecha, MIN_VEL, MAX_VEL);
+  velocidadIzquierda = constrain(velocidadIzquierda, MIN_VEL, MAX_VEL);
 }
+
 
 
 void seguidor(){
@@ -138,22 +149,48 @@ void seguidor(){
   leftSensorValue = analogRead(PIN_ITR20001_LEFT);
   middleSensorValue = analogRead(PIN_ITR20001_MIDDLE);
   rightSensorValue = analogRead(PIN_ITR20001_RIGHT);
+  //Serial.println(middleSensorValue);
 
   // Calcula las velocidades de los motores
   int velocidadDerecha, velocidadIzquierda;
   calcularPD(leftSensorValue, middleSensorValue, rightSensorValue, umbral, velocidadDerecha, velocidadIzquierda);
+  // Serial.println(velocidadDerecha);
+  // Serial.println(velocidadIzquierda);
+  
 
   if (distance >= 8){
     if (middleSensorValue > umbral) {
       recto(velocidadIzquierda, velocidadDerecha);
+      ultimo_sensor_infrarrojo = 1;
     }
     else if (rightSensorValue > umbral) {
       dcha(velocidadIzquierda, velocidadDerecha);
+      ultimo_sensor_infrarrojo = 3;
     }
     else if (leftSensorValue > umbral) {
       izq(velocidadIzquierda, velocidadDerecha);
+      ultimo_sensor_infrarrojo = 2;
     }
-    mensajeEnviado = false;
+    else if (middleSensorValue < umbral && rightSensorValue < umbral && leftSensorValue < umbral){
+      // Mensaje de LINE_LOST
+      Serial.println(3);
+      // Mensaje de INIT_LINE_SEARCH
+      Serial.println(5);
+      while (middleSensorValue < umbral && rightSensorValue < umbral && leftSensorValue < umbral){
+        if (ultimo_sensor_infrarrojo == 2){
+          izq(velocidadIzquierda, velocidadDerecha);
+        }
+        else if (ultimo_sensor_infrarrojo == 3){
+          dcha(velocidadIzquierda, velocidadDerecha);
+        }
+
+      // Mensaje de LINE_FOUND
+      Serial.println(7);
+      // Mensaje de STOP_LINE_SEARCH
+      Serial.println(6);
+
+    }
+    //mensajeEnviado = false;
   } 
   else {
     digitalWrite(PIN_Motor_AIN_1, LOW);
@@ -166,11 +203,15 @@ void seguidor(){
 
     // Enviar el mensaje "END_LAP" solo una vez
     if (obs_detected && !mensajeEnviado) {
-      Serial.println("1");
-      Serial.println("2");
+      // outputbuff
+      //Serial.write("\n");
+      Serial.print("2");
+      Serial.print("1");
+      
       // Serial.println((String)distance);
       mensajeEnviado = true; // Asegurar que el mensaje solo se envíe una vez
     }
+  }
   }
 }
 
@@ -209,7 +250,7 @@ void TaskLedBlink(void *pvParameters) {
       // Leer el valor del sensor infrarrojo
       int middleSensorValue = analogRead(PIN_ITR20001_MIDDLE);
 
-      if (middleSensorValue > umbral) {
+      if ((middleSensorValue >= umbral) || (leftSensorValue  >= umbral) || (rightSensorValue  >= umbral)) {
         // Dentro de la línea (verde)
         FastLED.showColor(CRGB::Green);
       } else {
@@ -269,6 +310,9 @@ void setup() {
     }
   }
   */
+
+  // Mensaje de INIT_LAP
+  Serial.println(0);
 
   // Create tasks for line following and ultrasonic sensing
   xTaskCreate(TaskLineFollower, "LineFollower", 128, NULL, 1, NULL);
