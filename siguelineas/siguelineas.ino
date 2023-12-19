@@ -1,6 +1,6 @@
 /*
   p4: FollowLine
-  Código para siguelíneas.
+  De momento código para siguelíneas.
 */
 
 #include <Arduino_FreeRTOS.h>
@@ -143,24 +143,51 @@ void izq(int velizq, int veldcha){
 
 
 void calcularPD(int valorSensorIzquierdo, int valorSensorCentral, int valorSensorDerecho, int umbral, int &velocidadDerecha, int &velocidadIzquierda) {
-  // Calcula el error ponderado
-  float error = (valorSensorDerecho - valorSensorIzquierdo); // Error basado en la diferencia de los sensores
+  // Mejora en el cálculo del error
+  float error = (valorSensorDerecho - valorSensorIzquierdo) + (valorSensorCentral - umbral); // Incorpora el sensor central
 
   // Cálculo del PD
   float delta_error = error - error_anterior;
   float salidaPD = Kp * error + Kd * delta_error;
-
-  // Actualiza el error anterior
   error_anterior = error;
 
+  // Actualiza el error anterior
+  // error_anterior = error;
+
+  // Ajuste dinámico de la velocidad base (opcional)
+  int velBase = ajustarVelocidadBase(error);
+
   // Calcula las velocidades
-  velocidadDerecha = VEL + salidaPD;
-  velocidadIzquierda = VEL - salidaPD;
+  velocidadDerecha = velBase + salidaPD;
+  velocidadIzquierda = velBase - salidaPD;
 
   // Limita las velocidades para que estén dentro de los rangos permitidos
   velocidadDerecha = constrain(velocidadDerecha, MIN_VEL, MAX_VEL);
   velocidadIzquierda = constrain(velocidadIzquierda, MIN_VEL, MAX_VEL);
 }
+
+
+
+int ajustarVelocidadBase(float error) {
+    // Definir los límites del error para ajustar la velocidad
+    const float errorMinimo = 10.0; // Define un umbral para el error mínimo
+    const float errorMaximo = 50.0; // Define un umbral para el error máximo
+
+    // Calcula el factor de ajuste de velocidad basado en el error
+    float factorAjuste = 1.0;
+    if (abs(error) < errorMinimo) {
+        // Si el error es pequeño, aumenta la velocidad
+        factorAjuste = 1.0 + (errorMinimo - abs(error)) / errorMinimo;
+    } else if (abs(error) > errorMaximo) {
+        // Si el error es grande, reduce la velocidad
+        factorAjuste = 1.0 - (abs(error) - errorMaximo) / errorMaximo;
+    }
+
+    // Ajusta la velocidad base dentro de los límites establecidos
+    int velocidadAjustada = VEL * factorAjuste;
+    return (velocidadAjustada);
+}
+
 
 
 
@@ -290,7 +317,7 @@ void TaskLedBlink(void *pvParameters) {
 
     // Determinar el color del LED
     CRGB ledColor;
-    if (distance <= umbral_distancia) {
+    if (distance < umbral_distancia) {
       ledColor = CRGB::Blue; // Cambiar a azul si hay un obstáculo
     } 
     else if ((middleSensorValue >= umbral) || (leftSensorValue >= umbral) || (rightSensorValue >= umbral)) {
