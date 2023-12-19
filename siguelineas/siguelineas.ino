@@ -62,8 +62,8 @@ CRGB leds[NUM_LEDS];
 float Kp = 0.55; // Constante proporcional
 float Kd = 0.83; // Constante derivativa
 
-const int MAX_VEL = 125;
-const int MIN_VEL = 125;
+const int MAX_VEL = 185;
+const int MIN_VEL = 150;
 
 float error_izq = 0; // Error actual
 float error_dch = 0; // Error actual
@@ -98,6 +98,8 @@ bool viene_de_ponerse_en_verde = false;
 bool viene_de_ponerse_en_rojo = true;
 
 int counter = 0; 
+
+const int umbral_distancia = 10; //cm
 //------------------- Funciones -------------------
 void recto(int velizq, int veldcha){
   digitalWrite(PIN_Motor_AIN_1, veldcha);
@@ -160,7 +162,7 @@ void seguidor(){
   // Serial.println(velocidadIzquierda);
   
 
-  if (distance >= 8){
+  if (distance >= umbral_distancia){
     if (middleSensorValue > umbral) {
       recto(velocidadIzquierda, velocidadDerecha);
       ultimo_sensor_infrarrojo = 1;
@@ -243,24 +245,18 @@ void TaskLedBlink(void *pvParameters) {
     int leftSensorValue = analogRead(PIN_ITR20001_LEFT);
     int rightSensorValue = analogRead(PIN_ITR20001_RIGHT);
 
-    // Determinar el color del LED basado en los sensores
+    // Determinar el color del LED
     CRGB ledColor;
-    if ((middleSensorValue >= umbral) || (leftSensorValue >= umbral) || (rightSensorValue >= umbral)) {
-      ledColor = CRGB::Green;
-      if (!viene_de_ponerse_en_verde) {
-        Serial.println(7); // LINE_FOUND
-        Serial.println(6); // STOP_LINE_SEARCH
-        viene_de_ponerse_en_verde = true;
-        viene_de_ponerse_en_rojo = false;
-      }
+    if (distance <= umbral_distancia) {
+      ledColor = CRGB::Blue; // Cambiar a azul si hay un obstáculo
+    } else if ((middleSensorValue >= umbral) || (leftSensorValue >= umbral) || (rightSensorValue >= umbral)) {
+      ledColor = CRGB::Green; // Cambiar a verde si está sobre la línea
+      viene_de_ponerse_en_verde = true;
+      viene_de_ponerse_en_rojo = false;
     } else {
-      ledColor = CRGB::Red;
-      if (!viene_de_ponerse_en_rojo) {
-        Serial.println(3); // LINE_LOST
-        Serial.println(5); // INIT_LINE_SEARCH
-        viene_de_ponerse_en_rojo = true;
-        viene_de_ponerse_en_verde = false;
-      }
+      ledColor = CRGB::Red; // Cambiar a rojo si está fuera de la línea
+      viene_de_ponerse_en_rojo = true;
+      viene_de_ponerse_en_verde = false;
     }
 
     // Cambiar el color del LED
@@ -270,6 +266,7 @@ void TaskLedBlink(void *pvParameters) {
     vTaskDelay(10 / portTICK_PERIOD_MS);
   }
 }
+
 
 
 // Task for ultrasonic sensor reading
