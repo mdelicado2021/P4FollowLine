@@ -106,7 +106,11 @@ int counter = 0;
 
 const int umbral_distancia = 10; //cm
 
+int totalLecturasInfrarrojos = 0;
+int lecturasLineaDetectada = 0;
 
+
+bool mensaje8_enviado = false;
 
 
 //------------------- Funciones -------------------
@@ -173,7 +177,11 @@ void seguidor(){
   calcularPD(leftSensorValue, middleSensorValue, rightSensorValue, umbral, velocidadDerecha, velocidadIzquierda);
   // Serial.println(velocidadDerecha);
   // Serial.println(velocidadIzquierda);
+  totalLecturasInfrarrojos++;
   
+  if (middleSensorValue >= umbral || rightSensorValue >= umbral || leftSensorValue >= umbral) {
+    lecturasLineaDetectada++;
+  }
 
   if (distance >= umbral_distancia){
     if (middleSensorValue > umbral) {
@@ -204,6 +212,11 @@ void seguidor(){
     digitalWrite(PIN_Motor_BIN_1, LOW);
     analogWrite(PIN_Motor_PWMB, 0);
     obs_detected = true;
+
+    if(!mensaje8_enviado){
+      porcentaje_linea();
+    }
+
     // Serial.println("END_LAP");
 
     // Enviar el mensaje "END_LAP" solo una vez
@@ -237,7 +250,14 @@ void ultrasonido(){
 }
 
 
+void porcentaje_linea(){
+  float porcentajeLinea = (float)lecturasLineaDetectada / totalLecturasInfrarrojos * 100.0;
+  Serial.print("Porcentaje de línea detectada: ");
+  Serial.print(porcentajeLinea);
+  Serial.println("%");
+  mensaje8_enviado = true;  
 
+}
 
 
 
@@ -270,7 +290,8 @@ void TaskLedBlink(void *pvParameters) {
     CRGB ledColor;
     if (distance <= umbral_distancia) {
       ledColor = CRGB::Blue; // Cambiar a azul si hay un obstáculo
-    } else if ((middleSensorValue >= umbral) || (leftSensorValue >= umbral) || (rightSensorValue >= umbral)) {
+    } 
+    else if ((middleSensorValue >= umbral) || (leftSensorValue >= umbral) || (rightSensorValue >= umbral)) {
       ledColor = CRGB::Green; // Cambiar a verde si está sobre la línea
         if (viene_de_ponerse_en_rojo) {
           // Mensaje de LINE_FOUND
@@ -280,7 +301,8 @@ void TaskLedBlink(void *pvParameters) {
         }
       viene_de_ponerse_en_verde = true;
       viene_de_ponerse_en_rojo = false;
-    } else {
+    } 
+    else {
       ledColor = CRGB::Red; // Cambiar a rojo si está fuera de la línea
        if (viene_de_ponerse_en_verde) {
         // Mensaje de LINE_LOST
