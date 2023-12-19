@@ -1,6 +1,6 @@
 /*
   p4: FollowLine
-  De momento código para siguelíneas.
+  Código para siguelíneas.
 */
 
 #include <Arduino_FreeRTOS.h>
@@ -68,7 +68,7 @@ float Kp = 0.55; // Constante proporcional
 float Kd = 0.83; // Constante derivativa
 
 const int MAX_VEL = 185;
-const int MIN_VEL = 150;
+const int MIN_VEL = 170;
 
 float error_izq = 0; // Error actual
 float error_dch = 0; // Error actual
@@ -104,11 +104,10 @@ bool viene_de_ponerse_en_rojo = true;
 
 int counter = 0; 
 
-const int umbral_distancia = 8; //cm
+const int umbral_distancia = 10; //cm
 
 int totalLecturasInfrarrojos = 0;
 int lecturasLineaDetectada = 0;
-
 
 bool mensaje8_enviado = false;
 
@@ -277,7 +276,6 @@ void TaskLineFollower(void *pvParameters) {
     seguidor();
   }
 }
-
 
 
 // Task for line following
