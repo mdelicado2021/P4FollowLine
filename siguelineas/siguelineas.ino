@@ -63,6 +63,8 @@ CRGB leds[NUM_LEDS];
 #define LINE_FOUND 7
 #define VISIBLE_LINE 8
 
+#define SEND_PING_INTERVAL 4000
+
 // Variables del PD
 float Kp = 0.55; // Constante proporcional
 float Kd = 0.83; // Constante derivativa
@@ -83,7 +85,7 @@ float salidaPD = 0; // Salida del control PD
 
 const int SPEED = 9600;
 
-int distance = 100; // Inicializa con un valor mayor que 8 para evitar falsos positivos
+int distance = 100.00; // Inicializa con un valor mayor que 8 para evitar falsos positivos
 bool mensajeEnviado = false;
 bool obs_detected = false;
 int pulse_time;
@@ -99,18 +101,22 @@ String outputbuff = "";
 
 int ultimo_sensor_infrarrojo = 0;
 
-bool viene_de_ponerse_en_verde = false;
-bool viene_de_ponerse_en_rojo = true;
+bool viene_de_ponerse_en_verde = true;
+bool viene_de_ponerse_en_rojo = false;
 
 int counter = 0; 
 
-const int umbral_distancia = 10; //cm
+const int umbral_distancia = 8; //cm
 
 int totalLecturasInfrarrojos = 0;
 int lecturasLineaDetectada = 0;
 
 bool mensaje8_enviado = false;
 
+long begin_millis;
+long last_millis;
+
+bool ping_enviado = false;
 
 //------------------- Funciones -------------------
 
@@ -205,11 +211,25 @@ void seguidor(){
   // Serial.println(velocidadIzquierda);
   totalLecturasInfrarrojos++;
   
+
+  ping_enviado = false;
+  if (!obs_detected && !ping_enviado) {
+    long current_millis = millis();
+    if (current_millis - last_millis >= SEND_PING_INTERVAL) {
+        last_millis = current_millis;
+        long timeElapsed = current_millis - begin_millis;
+        String timeElapsed_s = String(timeElapsed);
+        Serial.print(4);
+        Serial.print(timeElapsed_s);
+        ping_enviado = true;
+    }
+  }
+
   if (middleSensorValue >= umbral || rightSensorValue >= umbral || leftSensorValue >= umbral) {
     lecturasLineaDetectada++;
   }
 
-  if (distance >= umbral_distancia){
+  if (distance > umbral_distancia){
     if (middleSensorValue > umbral) {
       recto(velocidadIzquierda, velocidadDerecha);
     }
@@ -249,9 +269,17 @@ void seguidor(){
     if (obs_detected && !mensajeEnviado) {
       // outputbuff
       //Serial.write("\n");
-      //Serial.println(distance);
+      String distancia = (String)distance;
+
       Serial.print("2");
+      Serial.println(distancia);
       Serial.print("1");
+
+      long current_millis = millis();
+      long time_lap = current_millis - begin_millis;
+
+      String time_lap_s = String(time_lap);
+      //Serial.println(time_lap_s);
       
       // Serial.println((String)distance);
       mensajeEnviado = true; // Asegurar que el mensaje solo se envíe una vez
@@ -278,11 +306,11 @@ void ultrasonido(){
 
 
 void porcentaje_linea(){
-  float porcentajeLinea = (float)lecturasLineaDetectada / totalLecturasInfrarrojos * 100.0;
+  float porcentajeLinea = (float)lecturasLineaDetectada / totalLecturasInfrarrojos * 100.00;
   //Serial.print("Porcentaje de línea detectada: ");
-  //Serial.print(porcentajeLinea);
-  //Serial.println("%");
+  String porcentajeLinea_s = String(porcentajeLinea);
   Serial.print(8);
+  Serial.println(porcentajeLinea_s);
   mensaje8_enviado = true;  
 }
 
@@ -324,23 +352,24 @@ void TaskLedBlink(void *pvParameters) {
       ledColor = CRGB::Green; // Cambiar a verde si está sobre la línea
         if (viene_de_ponerse_en_rojo) {
           // Mensaje de LINE_FOUND
-          Serial.println(7);
+          Serial.print(7);
           // Mensaje de STOP_LINE_SEARCH
-          Serial.println(6);
+          Serial.print(6);
+          viene_de_ponerse_en_verde = true;
+          viene_de_ponerse_en_rojo = false;
         }
-      viene_de_ponerse_en_verde = true;
-      viene_de_ponerse_en_rojo = false;
+
     } 
     else {
       ledColor = CRGB::Red; // Cambiar a rojo si está fuera de la línea
        if (viene_de_ponerse_en_verde) {
         // Mensaje de LINE_LOST
-        Serial.println(3);
+        Serial.print(3);
         // Mensaje de INIT_LINE_SEARCH
-        Serial.println(5);
+        Serial.print(5);
+        viene_de_ponerse_en_rojo = true;
+        viene_de_ponerse_en_verde = false;
       }
-      viene_de_ponerse_en_rojo = true;
-      viene_de_ponerse_en_verde = false;
     }
 
     // Cambiar el color del LED
@@ -393,22 +422,24 @@ void setup() {
   pinMode(PIN_ITR20001_MIDDLE, INPUT);
   pinMode(PIN_ITR20001_RIGHT, INPUT);
 
-  /*
+
   while(1){
     if (Serial.available()){
       // Serial.println(Serial.read());
       break;
     }
   }
-  */
 
-  // Mensaje de INIT_LAP
-  Serial.println(0);
+  begin_millis = millis();
+  last_millis = millis();
+
 
   // Create tasks for line following and ultrasonic sensing
   xTaskCreate(TaskLineFollower, "LineFollower", 128, NULL, 1, NULL);
   xTaskCreate(TaskUltrasonicSensor, "Ultrasonic", 128, NULL, 1, NULL);
   xTaskCreate(TaskLedBlink, "LED", 128, NULL, 1, NULL);
+
+
   
 }
 
