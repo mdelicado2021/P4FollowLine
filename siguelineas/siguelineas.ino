@@ -1,6 +1,6 @@
 /*
   p4: FollowLine
-  De momento código para siguelíneas.
+  Code for line following on Arduino using FreeRTOS.
 */
 
 #include <Arduino_FreeRTOS.h>
@@ -10,49 +10,34 @@
 #include <string.h>
 
 
+//------------------- Variable Definitions -------------------
 
 
-//------------------- Definición de variables -------------------
-
-
-
-
-// Ultrasonido
+// Pins for the ultrasonic sensor
 #define TRIG_PIN 13  
 #define ECHO_PIN 12 
 
-// Sensor infrarrojo
+// Pins for the infrared sensor
 #define PIN_ITR20001_LEFT   A2
 #define PIN_ITR20001_MIDDLE A1
 #define PIN_ITR20001_RIGHT  A0
 
-// Motores
-// Enable/Disable motor control
-//  HIGH: motor control enabled
-//  LOW: motor control disabled
+// Pins for the motors
 #define PIN_Motor_STBY 3
-
-// Group A Motors (Right Side)
-// PIN_Motor_AIN_1: Digital output. HIGH: Forward, LOW: Backward
 #define PIN_Motor_AIN_1 7
-// PIN_Motor_PWMA: Analog output [0-255]. It provides speed.
 #define PIN_Motor_PWMA 5
-
-// Group B Motors (Left Side)
-// PIN_Motor_BIN_1: Digital output. HIGH: Forward, LOW: Backward
 #define PIN_Motor_BIN_1 8
-// PIN_Motor_PWMB: Analog output [0-255]. It provides speed.
 #define PIN_Motor_PWMB 6
 
-
+// Pins for the LED
 #define PIN_RBGLED 4
 #define NUM_LEDS 1
 CRGB leds[NUM_LEDS];
 
+// Base velocity
 #define VEL 150
 
-#define COM_ESP2ARD 0
-
+// Definitions for messages to ESP32
 #define START_LAP 0
 #define END_LAP 1
 #define OBSTACLE_DETECTED 2
@@ -62,195 +47,195 @@ CRGB leds[NUM_LEDS];
 #define STOP_LINE_SEARCH 6
 #define LINE_FOUND 7
 #define VISIBLE_LINE 8
-
 #define SEND_PING_INTERVAL 4000
 
-// Variables del PD
-float Kp = 0.55; // Constante proporcional
-float Kd = 0.83; // Constante derivativa
-
+// PD controller variables
+float Kp = 0.55;
+float Kd = 0.83;
 const int MAX_VEL = 185;
 const int MIN_VEL = 170;
+float error_left = 0;
+float error_right = 0;
+float previous_error = 0;
+float previous_error_right = 0;
+float previous_error_left = 0;
+float delta_error_left = 0;
+float delta_error_right = 0;
+float PD_output = 0;
 
-float error_izq = 0; // Error actual
-float error_dch = 0; // Error actual
-float error_anterior = 0;
-float error_anterior_dch = 0; // Error anterior
-float error_anterior_izq = 0; // Error anterior
-float delta_error_izq = 0; // Cambio en el error
-float delta_error_dch = 0; // Cambio en el error
-
-float salidaPD = 0; // Salida del control PD
-
-
+// Baud rate
 const int SPEED = 9600;
 
-int distance = 100.00; // Inicializa con un valor mayor que 8 para evitar falsos positivos
-bool mensajeEnviado = false;
+// Initialized with a value greater than 8 to avoid false positives
+int distance = 100.00;
+const int distance_threshold = 8;
+
+// Booleans to control message passing
+bool message_sent = false;
 bool obs_detected = false;
-int pulse_time;
+bool message_8_sent = false;
+bool ping_sent = false;
 
-const int umbral = 500;
-//const int umbral = 50;
+// Threshold for line detection
+const int threshold = 500;
 
-int leftSensorValue;
-int middleSensorValue;
-int rightSensorValue;
+// Infrared sensor initialization values
+int left_sensor_value;
+int middle_sensor_value;
+int right_sensor_value;
 
-String outputbuff = "";
+// Variables for recovery
+int last_infrared_sensor = 0;
+bool turned_green = true;
+bool turned_red = false;
 
-int ultimo_sensor_infrarrojo = 0;
+// Variables to calculate the percentage of line
+int total_readings = 0;
+int line_readings = 0;
 
-bool viene_de_ponerse_en_verde = true;
-bool viene_de_ponerse_en_rojo = false;
-
-int counter = 0; 
-
-const int umbral_distancia = 8; //cm
-
-int totalLecturasInfrarrojos = 0;
-int lecturasLineaDetectada = 0;
-
-bool mensaje8_enviado = false;
-
+// Variables to calculate time
 long begin_millis;
 long last_millis;
 
-bool ping_enviado = false;
 
-//------------------- Funciones -------------------
-
+//------------------- Functions -------------------
 
 
-
-void recto(int velizq, int veldcha){
-  digitalWrite(PIN_Motor_AIN_1, veldcha);
+// Function to go straight
+void straight(int left_speed, int right_speed){
+  digitalWrite(PIN_Motor_AIN_1, right_speed);
   analogWrite(PIN_Motor_PWMA, VEL);
   
-  digitalWrite(PIN_Motor_BIN_1, velizq);
+  digitalWrite(PIN_Motor_BIN_1, left_speed);
   analogWrite(PIN_Motor_PWMB, VEL);
 }
 
-void dcha(int velizq, int veldcha){
+// Function to turn right
+void right(int left_speed, int right_speed){
   digitalWrite(PIN_Motor_AIN_1, LOW);
   analogWrite(PIN_Motor_PWMA, 0);
   
   digitalWrite(PIN_Motor_BIN_1, HIGH);
-  analogWrite(PIN_Motor_PWMB, velizq);
+  analogWrite(PIN_Motor_PWMB, left_speed);
 }
 
-void izq(int velizq, int veldcha){
+// Function to turn left
+void left(int left_speed, int right_speed){
   digitalWrite(PIN_Motor_AIN_1, HIGH);
-  analogWrite(PIN_Motor_PWMA, veldcha);
+  analogWrite(PIN_Motor_PWMA, right_speed);
   
   digitalWrite(PIN_Motor_BIN_1, LOW);
   analogWrite(PIN_Motor_PWMB, 0);
 }
 
+// PD controller function
+void calculatePD(int left_sensor_value, int middle_sensor_value, int right_sensor_value, 
+                int threshold, int &rightVelocity, int &leftVelocity) {
+  // Improved error calculation incorporating the middle sensor
+  float error = (right_sensor_value - left_sensor_value) + (middle_sensor_value - threshold); 
 
-void calcularPD(int valorSensorIzquierdo, int valorSensorCentral, int valorSensorDerecho, int umbral, int &velocidadDerecha, int &velocidadIzquierda) {
-  // Mejora en el cálculo del error
-  float error = (valorSensorDerecho - valorSensorIzquierdo) + (valorSensorCentral - umbral); // Incorpora el sensor central
+  // PD calculation
+  float delta_error = error - previous_error;
+  float PD_output = Kp * error + Kd * delta_error;
+  previous_error = error;
 
-  // Cálculo del PD
-  float delta_error = error - error_anterior;
-  float salidaPD = Kp * error + Kd * delta_error;
-  error_anterior = error;
+  // Dynamic adjustment of the base velocity
+  int baseVel = adjustBaseVelocity(error);
 
-  // Actualiza el error anterior
-  // error_anterior = error;
+  // Calculate velocities
+  rightVelocity = baseVel + PD_output;
+  leftVelocity = baseVel - PD_output;
 
-  // Ajuste dinámico de la velocidad base (opcional)
-  int velBase = ajustarVelocidadBase(error);
-
-  // Calcula las velocidades
-  velocidadDerecha = velBase + salidaPD;
-  velocidadIzquierda = velBase - salidaPD;
-
-  // Limita las velocidades para que estén dentro de los rangos permitidos
-  velocidadDerecha = constrain(velocidadDerecha, MIN_VEL, MAX_VEL);
-  velocidadIzquierda = constrain(velocidadIzquierda, MIN_VEL, MAX_VEL);
+  // Limit velocities to be within allowed ranges
+  rightVelocity = constrain(rightVelocity, MIN_VEL, MAX_VEL);
+  leftVelocity = constrain(leftVelocity, MIN_VEL, MAX_VEL);
 }
 
 
+// Adjust velocities for PD control
+int adjustBaseVelocity(float error) {
+    // Define error bounds for velocity adjustment
+    const float minError = 10.0;
+    const float maxError = 50.0;
 
-int ajustarVelocidadBase(float error) {
-    // Definir los límites del error para ajustar la velocidad
-    const float errorMinimo = 10.0; // Define un umbral para el error mínimo
-    const float errorMaximo = 50.0; // Define un umbral para el error máximo
-
-    // Calcula el factor de ajuste de velocidad basado en el error
-    float factorAjuste = 1.0;
-    if (abs(error) < errorMinimo) {
-        // Si el error es pequeño, aumenta la velocidad
-        factorAjuste = 1.0 + (errorMinimo - abs(error)) / errorMinimo;
-    } else if (abs(error) > errorMaximo) {
-        // Si el error es grande, reduce la velocidad
-        factorAjuste = 1.0 - (abs(error) - errorMaximo) / errorMaximo;
+    // Calculate velocity adjustment factor based on error
+    float velocityAdjustmentFactor = 1.0;
+    if (abs(error) < minError) {
+        // If error is small, increase velocity
+        velocityAdjustmentFactor = 1.0 + (minError - abs(error)) / minError;
+    } else if (abs(error) > maxError) {
+        // If error is large, decrease velocity
+        velocityAdjustmentFactor = 1.0 - (abs(error) - maxError) / maxError;
     }
 
-    // Ajusta la velocidad base dentro de los límites establecidos
-    int velocidadAjustada = VEL * factorAjuste;
-    return (velocidadAjustada);
+    // Adjust base velocity within specified limits
+    int adjustedVelocity = VEL * velocityAdjustmentFactor;
+    return (adjustedVelocity);
 }
 
 
+// Main function for line following
+void follower(){
+  // Read values from infrared sensors
+  left_sensor_value = analogRead(PIN_ITR20001_LEFT);
+  middle_sensor_value = analogRead(PIN_ITR20001_MIDDLE);
+  right_sensor_value = analogRead(PIN_ITR20001_RIGHT);
 
+  // Calculate motor velocities
+  int rightVelocity, leftVelocity;
+  calculatePD(left_sensor_value, middle_sensor_value, right_sensor_value, threshold, rightVelocity, leftVelocity);
 
-void seguidor(){
-  // Lectura de valores de los sensores infrarrojos
-  leftSensorValue = analogRead(PIN_ITR20001_LEFT);
-  middleSensorValue = analogRead(PIN_ITR20001_MIDDLE);
-  rightSensorValue = analogRead(PIN_ITR20001_RIGHT);
-  //Serial.println(middleSensorValue);
-
-  // Calcula las velocidades de los motores
-  int velocidadDerecha, velocidadIzquierda;
-  calcularPD(leftSensorValue, middleSensorValue, rightSensorValue, umbral, velocidadDerecha, velocidadIzquierda);
-  // Serial.println(velocidadDerecha);
-  // Serial.println(velocidadIzquierda);
-  totalLecturasInfrarrojos++;
+  // Calculate the total sensor readings
+  total_readings++;
   
-
-  ping_enviado = false;
-  if (!obs_detected && !ping_enviado) {
+  // Sending pings
+  if (!obs_detected) {
     long current_millis = millis();
-    if (current_millis - last_millis >= SEND_PING_INTERVAL) {
-        last_millis = current_millis;
-        long timeElapsed = current_millis - begin_millis;
-        String timeElapsed_s = String(timeElapsed);
-        Serial.print(4);
-        Serial.print(timeElapsed_s);
-        ping_enviado = true;
+    if (!ping_sent && current_millis - last_millis >= SEND_PING_INTERVAL) {
+      // Send a ping if one has not been sent recently and the interval has passed
+      last_millis = current_millis; // Save the time when the ping was sent
+      long timeElapsed = current_millis - begin_millis;
+      String timeElapsed_s = String(timeElapsed);
+      Serial.print("4");
+      Serial.println(timeElapsed_s);
+      ping_sent = true;
+    } else if (ping_sent && current_millis - last_millis >= SEND_PING_INTERVAL) {
+      // Reset the flag to allow the next ping
+      ping_sent = false;
     }
   }
 
-  if (middleSensorValue >= umbral || rightSensorValue >= umbral || leftSensorValue >= umbral) {
-    lecturasLineaDetectada++;
+  // Line detection calculation with any of the infrared sensors
+  if (middle_sensor_value >= threshold || right_sensor_value >= threshold || left_sensor_value >= threshold) {
+    line_readings++;
   }
 
-  if (distance > umbral_distancia){
-    if (middleSensorValue > umbral) {
-      recto(velocidadIzquierda, velocidadDerecha);
+  // Robot movement
+  if (distance > distance_threshold){
+    if (middle_sensor_value > threshold) {
+      straight(leftVelocity, rightVelocity);
     }
-    else if (rightSensorValue > umbral) {
-      dcha(velocidadIzquierda, velocidadDerecha);
-      ultimo_sensor_infrarrojo = 3;
+    else if (right_sensor_value > threshold) {
+      right(leftVelocity, rightVelocity);
+      last_infrared_sensor = 3;
     }
-    else if (leftSensorValue > umbral) {
-      izq(velocidadIzquierda, velocidadDerecha);
-      ultimo_sensor_infrarrojo = 2;
+    else if (left_sensor_value > threshold) {
+      left(leftVelocity, rightVelocity);
+      last_infrared_sensor = 2;
     }
-    else if (middleSensorValue < umbral && rightSensorValue < umbral && leftSensorValue < umbral){
-      if (ultimo_sensor_infrarrojo == 2){
-        izq(velocidadIzquierda, velocidadDerecha);
+
+    // Recovery
+    else if (middle_sensor_value < threshold && right_sensor_value < threshold && left_sensor_value < threshold){
+      if (last_infrared_sensor == 2){
+        left(leftVelocity, rightVelocity);
       }
-      else if (ultimo_sensor_infrarrojo == 3){
-        dcha(velocidadIzquierda, velocidadDerecha);
+      else if (last_infrared_sensor == 3){
+        right(leftVelocity, rightVelocity);
       }
     }
-    //mensajeEnviado = false;
   }
+
+  // Obstacle detection
   else {
     digitalWrite(PIN_Motor_AIN_1, LOW);
     analogWrite(PIN_Motor_PWMA, 0);
@@ -259,189 +244,164 @@ void seguidor(){
     analogWrite(PIN_Motor_PWMB, 0);
     obs_detected = true;
 
-    if(!mensaje8_enviado){
-      porcentaje_linea();
+    // Send the line percentage
+    if(!message_8_sent){
+      linePercentage();
     }
 
-    // Serial.println("END_LAP");
-
-    // Enviar el mensaje "END_LAP" solo una vez
-    if (obs_detected && !mensajeEnviado) {
-      // outputbuff
-      //Serial.write("\n");
-      String distancia = (String)distance;
+    // Send the "END_LAP" message only once
+    if (obs_detected && !message_sent) {
+      String distance_str = (String)distance;
 
       Serial.print("2");
-      Serial.println(distancia);
+      Serial.println(distance_str);
       Serial.print("1");
 
       long current_millis = millis();
-      long time_lap = current_millis - begin_millis;
+      long lap_time = current_millis - begin_millis;
 
-      String time_lap_s = String(time_lap);
-      //Serial.println(time_lap_s);
+      String lap_time_str = String(lap_time);
+      Serial.println(lap_time_str);
       
-      // Serial.println((String)distance);
-      mensajeEnviado = true; // Asegurar que el mensaje solo se envíe una vez
+      // Ensure the message is sent only once
+      message_sent = true;
     }
   }
 }
 
-void ultrasonido(){
-  long t; //timepo que demora en llegar el eco
-  long d; //distancia en centimetros
+// Function to use the ultrasonic sensor
+void ultrasonic(){
+  long t;
+  long d;
 
   digitalWrite(TRIG_PIN, HIGH);
-  delayMicroseconds(10);          //Enviamos un pulso de 10us
+  delayMicroseconds(10);
   digitalWrite(TRIG_PIN, LOW);
   
-  t = pulseIn(ECHO_PIN, HIGH); //obtenemos el ancho del pulso
-  distance = t/59;             //escalamos el tiempo a una distancia en cm
-  
-  // Serial.print("Distancia: ");
-  // Serial.print(distance);      //Enviamos serialmente el valor de la distancia
-  // Serial.print("cm");
-  // Serial.println();
+  t = pulseIn(ECHO_PIN, HIGH);
+  distance = t/59;
+}
+
+// Send the line percentage
+void linePercentage(){
+  float linePercentage = (float)line_readings / total_readings * 100.00;
+  String linePercentage_s = String(linePercentage);
+  Serial.print("8");
+  Serial.println(linePercentage_s);
+  message_8_sent = true;  
 }
 
 
-void porcentaje_linea(){
-  float porcentajeLinea = (float)lecturasLineaDetectada / totalLecturasInfrarrojos * 100.00;
-  //Serial.print("Porcentaje de línea detectada: ");
-  String porcentajeLinea_s = String(porcentajeLinea);
-  Serial.print(8);
-  Serial.println(porcentajeLinea_s);
-  mensaje8_enviado = true;  
-}
+//------------------- Tasks -------------------
 
 
-
-
-//------------------- Tareas -------------------
-
-
-
-
-
-// Task for line following
+// Task for line follower
 void TaskLineFollower(void *pvParameters) {
   (void) pvParameters;
-
   for (;;) {
-    seguidor();
+    follower();
   }
 }
 
 
-// Task for line following
+// Task for LED illumination
 void TaskLedBlink(void *pvParameters) {
   (void) pvParameters;
-
   for (;;) {
-    // Leer el valor del sensor infrarrojo
-    int middleSensorValue = analogRead(PIN_ITR20001_MIDDLE);
-    int leftSensorValue = analogRead(PIN_ITR20001_LEFT);
-    int rightSensorValue = analogRead(PIN_ITR20001_RIGHT);
+    // Read the value of the infrared sensor
+    int middle_sensor_value = analogRead(PIN_ITR20001_MIDDLE);
+    int left_sensor_value = analogRead(PIN_ITR20001_LEFT);
+    int right_sensor_value = analogRead(PIN_ITR20001_RIGHT);
 
-    // Determinar el color del LED
+    // Determine the LED color
     CRGB ledColor;
-    if (distance < umbral_distancia) {
-      ledColor = CRGB::Blue; // Cambiar a azul si hay un obstáculo
+    if (distance < distance_threshold) {
+      ledColor = CRGB::Blue;
     } 
-    else if ((middleSensorValue >= umbral) || (leftSensorValue >= umbral) || (rightSensorValue >= umbral)) {
-      ledColor = CRGB::Green; // Cambiar a verde si está sobre la línea
-        if (viene_de_ponerse_en_rojo) {
-          // Mensaje de LINE_FOUND
-          Serial.print(7);
-          // Mensaje de STOP_LINE_SEARCH
-          Serial.print(6);
-          viene_de_ponerse_en_verde = true;
-          viene_de_ponerse_en_rojo = false;
+    else if ((middle_sensor_value >= threshold) || (left_sensor_value >= threshold) || (right_sensor_value >= threshold)) {
+      ledColor = CRGB::Green;
+        if (turned_red) {
+          Serial.print("7");
+          Serial.print("6");
+          turned_green = true;
+          turned_red = false;
         }
-
     } 
-    else {
-      ledColor = CRGB::Red; // Cambiar a rojo si está fuera de la línea
-       if (viene_de_ponerse_en_verde) {
-        // Mensaje de LINE_LOST
-        Serial.print(3);
-        // Mensaje de INIT_LINE_SEARCH
-        Serial.print(5);
-        viene_de_ponerse_en_rojo = true;
-        viene_de_ponerse_en_verde = false;
+    else if ((middle_sensor_value < threshold) && (left_sensor_value < threshold) && (right_sensor_value < threshold)){
+      ledColor = CRGB::Red;
+       if (turned_green) {
+        Serial.print("3");
+        Serial.print("5");
+        turned_red = true;
+        turned_green = false;
       }
     }
-
-    // Cambiar el color del LED
     FastLED.showColor(ledColor);
-
-    // Retraso mínimo para permitir el procesamiento de los sensores y la actualización del LED
     vTaskDelay(10 / portTICK_PERIOD_MS);
   }
 }
 
 
-
-// Task for ultrasonic sensor reading
+// Task for the ultrasonic sensor
 void TaskUltrasonicSensor(void *pvParameters) {
   (void) pvParameters;
-
   for (;;) {
-    ultrasonido();
-    vTaskDelay(100 / portTICK_PERIOD_MS); // Adjust the delay as necessary
+    ultrasonic();
+    vTaskDelay(100 / portTICK_PERIOD_MS);
   }
 }
 
 
-
-
 //------------------- Setup -------------------
+
 
 void setup() {
   Serial.begin(9600);
 
-  pinMode(TRIG_PIN, OUTPUT); //pin como salida
-  pinMode(ECHO_PIN, INPUT);  //pin como entrada
-  digitalWrite(TRIG_PIN, LOW); //Inicializamos el pin con 0
+  // Ultrasonic sensor pins
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  digitalWrite(TRIG_PIN, LOW);
 
-  // Configurar pines de motores como salida
+  // Configure motor pins as output
   pinMode(PIN_Motor_STBY, OUTPUT);
   pinMode(PIN_Motor_AIN_1, OUTPUT);
   pinMode(PIN_Motor_PWMA, OUTPUT);
   pinMode(PIN_Motor_BIN_1, OUTPUT);
   pinMode(PIN_Motor_PWMB, OUTPUT);
 
+  // Enable motors
   digitalWrite(PIN_Motor_STBY, HIGH);
 
   // LED
   FastLED.addLeds<NEOPIXEL, PIN_RBGLED>(leds, NUM_LEDS);
   FastLED.setBrightness(20);
 
-  // Configuración pines de infrarrojo
+  // Configure infrared sensor pins
   pinMode(PIN_ITR20001_LEFT, INPUT);
   pinMode(PIN_ITR20001_MIDDLE, INPUT);
   pinMode(PIN_ITR20001_RIGHT, INPUT);
 
-
+  // Wait for communication
   while(1){
     if (Serial.available()){
-      // Serial.println(Serial.read());
       break;
     }
   }
 
+  // Calculate times
   begin_millis = millis();
   last_millis = millis();
-
 
   // Create tasks for line following and ultrasonic sensing
   xTaskCreate(TaskLineFollower, "LineFollower", 128, NULL, 1, NULL);
   xTaskCreate(TaskUltrasonicSensor, "Ultrasonic", 128, NULL, 1, NULL);
-  xTaskCreate(TaskLedBlink, "LED", 128, NULL, 1, NULL);
-
-
-  
+  xTaskCreate(TaskLedBlink, "LED", 128, NULL, 1, NULL);  
 }
+
+
+//------------------- Loop -------------------
+
 
 void loop() {
   // Empty loop - tasks are running in their own loop
